@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[18]:
+# In[7]:
 
 
 import sys
@@ -26,6 +26,7 @@ class PinterestImageScraper:
         self.json_data_list = []
         self.unique_img = []
         self.test_list = []
+        self.key_word = ""
 
     @staticmethod
     def clear():
@@ -46,7 +47,7 @@ class PinterestImageScraper:
             link = re.sub(r'/url\?q=', '', link)
             if link[0] != "/" and "pinterest" in link:
                 searched_urls.append(link)
-        
+
         return searched_urls
 
     # -------------------------- save json data from source code of given pinterest url -------------
@@ -68,31 +69,40 @@ class PinterestImageScraper:
         if not len(url_list):
             return url_list
         url_list = []
+
         for js in self.json_data_list:
             try:
                 data = DotMap(json.loads(js))
                 urls = []
+
                 for pin in data.props.initialReduxState.pins:
+
+                    # get all relevant info
+                    pic = data.props.initialReduxState.pins[pin].images.get("474x").get("url")
+                    name = data.props.initialReduxState.pins[pin].rich_summary.get("display_name")
+                    description = data.props.initialReduxState.pins[pin].rich_summary.get("display_description")
+                    pic_name = data.props.initialReduxState.pins[pin].images.get("474x").get("url").split('/')[-1]
+
                     if isinstance(data.props.initialReduxState.pins[pin].images.get("474x"), list):
                         for i in data.props.initialReduxState.pins[pin].images.get("474x"):
-                            urls.append(i.get("url"))
+                            if description != "":
+                                url_list.append(i.get("url"))
+                                combo = [self.key_word, i.get("url"), pic_name, name, description]
+                                self.test_list.append(combo)
 
                     else:
-                        urls.append(data.props.initialReduxState.pins[pin].images.get("474x").get("url"))
-                        pic = data.props.initialReduxState.pins[pin].images.get("474x").get("url")
-                        name = data.props.initialReduxState.pins[pin].rich_summary.get("display_name")
-                        description = data.props.initialReduxState.pins[pin].rich_summary.get("display_description")
-                        pic_name = data.props.initialReduxState.pins[pin].images.get("474x").get("url").split('/')[-1]
-                        combo = [pic, pic_name, name, description]
-                        self.test_list.append(combo)
+                        if description != "":
+                            url_list.append(pic)
+                            combo = [self.key_word, pic, pic_name, name, description]
+                            self.test_list.append(combo)
 
-                for url in urls:
-                    url_list.append(url)
-                    
+            #                 for url in urls:
+            #                     url_list.append(url)
+
             except Exception as e:
                 continue
-        
-#         self.test_list = list(set(self.test_list))
+
+        #         self.test_list = list(set(self.test_list))
         return list(set(url_list))
 
     # ------------------------------ image hash calculation -------------------------
@@ -104,8 +114,8 @@ class PinterestImageScraper:
     # ------------------------------  save all downloaded images to folder ---------------------------
     def saving_op(self, var):
         url_list, folder_name = var
-#         if not os.path.exists(os.getcwd() + folder_name):
-#             os.mkdir(os.getcwd() + "/result/images")
+        #         if not os.path.exists(os.getcwd() + folder_name):
+        #             os.mkdir(os.getcwd() + "/result/images")
         for img in tqdm(url_list):
             result = get(img, stream=True).content
             file_name = img.split("/")[-1]
@@ -115,7 +125,6 @@ class PinterestImageScraper:
             if not self.dhash(image) in self.unique_img:
                 cv2.imwrite(file_path, image)
             self.unique_img.append(self.dhash(image))
-            
 
     # ------------------------------  download images from image url list ----------------------------
     def download(self, url_list, keyword):
@@ -124,9 +133,9 @@ class PinterestImageScraper:
         idx = len(url_list) // num_of_workers
         param = []
         for i in range(num_of_workers):
-            #[((i*idx)):(idx*(i+1))]
+            # [((i*idx)):(idx*(i+1))]
             param.append((url_list, keyword))
-        
+
         with ThreadPoolExecutor(max_workers=num_of_workers) as executor:
             executor.map(self.saving_op, param)
         PinterestImageScraper.clear()
@@ -136,6 +145,7 @@ class PinterestImageScraper:
     def start_scraping(key=None):
         try:
             key = input("Enter keyword: ") if key == None else key
+
             keyword = key + " pinterest"
             keyword = keyword.replace("+", "%20")
             url = f'http://www.google.co.in/search?hl=en&q={keyword}'
@@ -146,11 +156,12 @@ class PinterestImageScraper:
         except Exception as e:
             return []
 
-        return searched_urls, key.replace(" ", "_")
-
+        return searched_urls, key
 
     def make_ready(self, key=None):
         extracted_urls, keyword = PinterestImageScraper.start_scraping(key)
+        # store the key
+        self.key_word = keyword
 
         print('[+] saving json data ...')
         for i in extracted_urls:
@@ -166,28 +177,28 @@ class PinterestImageScraper:
         if len(url_list):
             try:
                 print("downloading...")
-                
+
                 if not os.path.exists(os.getcwd() + "/result"):
                     os.mkdir(os.getcwd() + "/result")
                     os.mkdir(os.getcwd() + "/result/images")
-                    
+
                 self.download(url_list, keyword)
-                
-                # write current data into csv file  
+
+                # write current data into csv file
                 csv_path = os.getcwd() + "/result/data.csv"
                 with open(csv_path, 'a') as f:
                     writer = csv.writer(f)
-                    
+
                     if (os.path.getsize(csv_path) == 0):
-                        writer.writerow(["url", "name", "title", "description"])
-                        
+                        writer.writerow(["search_keyword", "url", "name", "title", "description"])
+
                     for fields in self.test_list:
                         writer.writerow(fields)
-                
+
             except KeyboardInterrupt:
                 return False
             return True
-        
+
         return False
 
 
@@ -199,7 +210,6 @@ if __name__ == "__main__":
         print("\nDownloading completed !!")
     else:
         print("\nNothing to download !!")
-
 
 # In[ ]:
 
